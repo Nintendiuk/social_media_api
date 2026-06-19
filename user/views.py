@@ -1,12 +1,15 @@
-from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
     OpenApiParameter,
     OpenApiExample,
 )
-from rest_framework import generics, filters, status
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework import status, viewsets, filters
+from rest_framework.decorators import action
+from rest_framework.permissions import (
+    AllowAny,
+    IsAuthenticated,
+)
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -22,22 +25,18 @@ from user.serializers import (
 )
 
 
+# Auth views
 @extend_schema(tags=["Auth"])
 class RegisterView(APIView):
     permission_classes = (AllowAny,)
 
     @extend_schema(
         summary="Register a new user",
-        description=(
-            "Creates a new user account. "
-            "Returns the created user (no password). "
-            "No authentication required."
-        ),
         request=UserRegistrationSerializer,
         responses={201: UserRegistrationSerializer},
         examples=[
             OpenApiExample(
-                "Registration example",
+                "Example",
                 value={
                     "email": "user@example.com",
                     "username": "myusername",
@@ -54,7 +53,8 @@ class RegisterView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(
-            serializer.data, status=status.HTTP_201_CREATED
+            serializer.data,
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -64,10 +64,6 @@ class LoginView(APIView):
 
     @extend_schema(
         summary="Obtain JWT token pair",
-        description=(
-            "Authenticates with email and password. "
-            "Returns access and refresh JWT tokens."
-        ),
         request=LoginSerializer,
         responses={
             200: {
@@ -80,7 +76,7 @@ class LoginView(APIView):
         },
         examples=[
             OpenApiExample(
-                "Login example",
+                "Example",
                 value={
                     "email": "user@example.com",
                     "password": "StrongPass123!",
@@ -94,7 +90,9 @@ class LoginView(APIView):
             data=request.data,
             context={"request": request},
         )
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            return Response({"detail": "Invalid email or password"},
+                            status=status.HTTP_401_UNAUTHORIZED)
         user = serializer.validated_data["user"]
         refresh = RefreshToken.for_user(user)
         return Response(
@@ -112,10 +110,6 @@ class LogoutView(APIView):
 
     @extend_schema(
         summary="Blacklist refresh token (logout)",
-        description=(
-            "Invalidates the provided refresh token. "
-            "The access token expires naturally."
-        ),
         request=LogoutSerializer,
         responses={205: None},
     )
@@ -123,176 +117,111 @@ class LogoutView(APIView):
         serializer = LogoutSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(status=status.HTTP_205_RESET_CONTENT)
-
-
-@extend_schema(tags=["Profiles"])
-class UserProfileMeView(generics.RetrieveUpdateAPIView):
-    """
-    GET  /api/user/profile/me/  → own profile
-    PATCH/PUT                   → update own profile
-    """
-    serializer_class = UserProfileSerializer
-    permission_classes = (IsAuthenticated,)
-
-    @extend_schema(summary="Retrieve own profile")
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
-    @extend_schema(summary="Partially update own profile")
-    def patch(self, request, *args, **kwargs):
-        return super().patch(request, *args, **kwargs)
-
-    @extend_schema(summary="Update own profile")
-    def put(self, request, *args, **kwargs):
-        return super().put(request, *args, **kwargs)
-
-    def get_object(self):
-        return self.request.user
-
-
-@extend_schema(tags=["Profiles"])
-class UserProfileDetailView(generics.RetrieveUpdateAPIView):
-    """
-    GET   /api/user/profile/<pk>/  → any user profile
-    PATCH /api/user/profile/<pk>/  → owner only
-    """
-    serializer_class = UserProfileSerializer
-    permission_classes = (IsAuthenticated, IsOwnerOrReadOnly)
-
-    @extend_schema(summary="Retrieve a user profile by ID")
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
-    @extend_schema(
-        summary="Partially update profile (owner only)"
-    )
-    def patch(self, request, *args, **kwargs):
-        return super().patch(request, *args, **kwargs)
-
-    @extend_schema(
-        summary="Update profile (owner only)"
-    )
-    def put(self, request, *args, **kwargs):
-        return super().put(request, *args, **kwargs)
-
-    def get_queryset(self):
-        return User.objects.prefetch_related(
-            "followers", "following"
+        return Response(
+            status=status.HTTP_205_RESET_CONTENT
         )
 
 
-@extend_schema(tags=["Profiles"])
-class UserListView(generics.ListAPIView):
-    """
-    GET /api/user/profile/?search=<term>
-    Searches username and email fields.
-    """
-    serializer_class = UserProfileSerializer
-    permission_classes = (IsAuthenticated,)
-    filter_backends = (filters.SearchFilter,)
-    search_fields = ("username", "email")
+# ── User ViewSet ──────────────────────────────────────────
 
-    @extend_schema(
-        summary="Search users by username or email",
+@extend_schema_view(
+    list=extend_schema(
+        summary="Search users",
+        tags=["Profiles"],
         parameters=[
             OpenApiParameter(
                 name="search",
                 description=(
-                    "Search term matched against "
-                    "username and email."
+                    "Match against username or email."
                 ),
                 required=False,
                 type=str,
             )
         ],
-    )
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
+    ),
+    retrieve=extend_schema(
+        summary="Retrieve a user profile",
+        tags=["Profiles"],
+    ),
+    partial_update=extend_schema(
+        summary="Update own profile",
+        tags=["Profiles"],
+    ),
+    me=extend_schema(
+        summary="Retrieve or update own profile",
+        tags=["Profiles"],
+    ),
+    follow=extend_schema(
+        summary="Follow a user",
+        tags=["Relationships"],
+    ),
+    unfollow=extend_schema(
+        summary="Unfollow a user",
+        tags=["Relationships"],
+    ),
+    followers=extend_schema(
+        summary="List followers",
+        tags=["Relationships"],
+    ),
+    following=extend_schema(
+        summary="List following",
+        tags=["Relationships"],
+    ),
+)
+class UserViewSet(viewsets.ModelViewSet):
+    serializer_class = UserProfileSerializer
+    filter_backends = (filters.SearchFilter,)
+    search_fields = ("username", "email")
+    http_method_names = [
+        "get", "post", "patch", "put",
+        "delete", "head", "options",
+    ]
 
     def get_queryset(self):
         return User.objects.prefetch_related(
             "followers", "following"
         )
 
+    def get_permissions(self):
+        if self.action in (
+            "partial_update", "update", "destroy"
+        ):
+            return [IsAuthenticated(), IsOwnerOrReadOnly()]
+        return [IsAuthenticated()]
 
-@extend_schema(tags=["Relationships"])
-class FollowView(APIView):
-    """POST /api/user/<pk>/follow/"""
-    permission_classes = (IsAuthenticated,)
+    # ── private helpers ───────────────────────────────
 
-    @extend_schema(
-        summary="Follow a user",
-        description=(
-            "Authenticated user follows the target user. "
-            "Returns 400 if already following or "
-            "attempting to follow self."
-        ),
-        responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "detail": {"type": "string"}
-                },
-            },
-            400: {
-                "type": "object",
-                "properties": {
-                    "detail": {"type": "string"}
-                },
-            },
-        },
-    )
-    def post(self, request, pk):
-        target = get_object_or_404(User, pk=pk)
+    def _follow_response(self, target, action):
+        is_following = self.request.user.following.filter(
+            pk=target.pk
+        ).exists()
 
-        if target == request.user:
+        if action == "follow":
+            if target == self.request.user:
+                return Response(
+                    {
+                        "detail": (
+                            "You cannot follow yourself."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if is_following:
+                return Response(
+                    {"detail": "Already following."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            self.request.user.following.add(target)
             return Response(
-                {"detail": "You cannot follow yourself."},
-                status=status.HTTP_400_BAD_REQUEST,
+                {
+                    "detail": (
+                        f"Now following {target.username}."
+                    )
+                },
+                status=status.HTTP_200_OK,
             )
 
-        if request.user.following.filter(
-            pk=target.pk
-        ).exists():
-            return Response(
-                {"detail": "Already following this user."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        request.user.following.add(target)
-        return Response(
-            {"detail": f"Now following {target.username}."},
-            status=status.HTTP_200_OK,
-        )
-
-
-@extend_schema(tags=["Relationships"])
-class UnfollowView(APIView):
-    """POST /api/user/<pk>/unfollow/"""
-    permission_classes = (IsAuthenticated,)
-
-    @extend_schema(
-        summary="Unfollow a user",
-        description=(
-            "Authenticated user unfollows the target user. "
-            "Returns 400 if not currently following."
-        ),
-        responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "detail": {"type": "string"}
-                },
-            }
-        },
-    )
-    def post(self, request, pk):
-        target = get_object_or_404(User, pk=pk)
-
-        if not request.user.following.filter(
-            pk=target.pk
-        ).exists():
+        if not is_following:
             return Response(
                 {
                     "detail": (
@@ -301,49 +230,78 @@ class UnfollowView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        request.user.following.remove(target)
+        self.request.user.following.remove(target)
         return Response(
             {"detail": f"Unfollowed {target.username}."},
             status=status.HTTP_200_OK,
         )
 
-
-@extend_schema_view(
-    get=extend_schema(
-        summary="List followers of a user",
-        tags=["Relationships"],
-    )
-)
-class FollowersListView(generics.ListAPIView):
-    """GET /api/user/<pk>/followers/"""
-    serializer_class = FollowSerializer
-    permission_classes = (IsAuthenticated,)
-
-    def get_queryset(self):
-        target = get_object_or_404(
-            User, pk=self.kwargs["pk"]
-        )
-        return target.followers.prefetch_related(
+    def _follow_list_response(self, relation):
+        target = self.get_object()
+        qs = getattr(target, relation).prefetch_related(
             "followers", "following"
         )
+        serializer = FollowSerializer(
+            qs,
+            many=True,
+            context={"request": self.request},
+        )
+        return Response(serializer.data)
 
+    # ── actions ───────────────────────────────────────
 
-@extend_schema_view(
-    get=extend_schema(
-        summary="List users followed by a user",
-        tags=["Relationships"],
+    @action(
+        detail=False,
+        methods=["get", "patch", "put"],
+        url_path="me",
+        permission_classes=[IsAuthenticated],
     )
-)
-class FollowingListView(generics.ListAPIView):
-    """GET /api/user/<pk>/following/"""
-    serializer_class = FollowSerializer
-    permission_classes = (IsAuthenticated,)
+    def me(self, request):
+        if request.method == "GET":
+            return Response(
+                self.get_serializer(request.user).data
+            )
+        serializer = self.get_serializer(
+            request.user,
+            data=request.data,
+            partial=request.method == "PATCH",
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
-    def get_queryset(self):
-        target = get_object_or_404(
-            User, pk=self.kwargs["pk"]
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated],
+    )
+    def follow(self, request, pk=None):
+        return self._follow_response(
+            self.get_object(), "follow"
         )
-        return target.following.prefetch_related(
-            "followers", "following"
+
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated],
+    )
+    def unfollow(self, request, pk=None):
+        return self._follow_response(
+            self.get_object(), "unfollow"
         )
+
+    @action(
+        detail=True,
+        methods=["get"],
+        permission_classes=[IsAuthenticated],
+    )
+    def followers(self, request, pk=None):
+        return self._follow_list_response("followers")
+
+    @action(
+        detail=True,
+        methods=["get"],
+        permission_classes=[IsAuthenticated],
+    )
+    def following(self, request, pk=None):
+        return self._follow_list_response("following")

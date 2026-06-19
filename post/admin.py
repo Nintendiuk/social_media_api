@@ -1,6 +1,11 @@
 from django.contrib import admin
-
-from post.models import Comment, Hashtag, Like, Post, ScheduledPost
+from post.models import (
+    Comment,
+    Hashtag,
+    Like,
+    Post,
+    ScheduledPost,
+)
 
 
 @admin.register(Post)
@@ -30,6 +35,9 @@ class CommentAdmin(admin.ModelAdmin):
 @admin.register(ScheduledPost)
 class ScheduledPostAdmin(admin.ModelAdmin):
     list_display = (
-        "author", "scheduled_at", "status", "created_at"
+        "author",
+        "scheduled_at",
+        "status",
+        "created_at",
     )
     list_filter = ("status",)

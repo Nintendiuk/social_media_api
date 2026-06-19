@@ -15,7 +15,6 @@ DATABASES = {
     }
 }
 
-# ── Security headers ──────────────────────────────────────
 SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
@@ -26,16 +25,14 @@ SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 
-# ── Static files (WhiteNoise) ─────────────────────────────
 MIDDLEWARE.insert(  # noqa: F405
-    1,
-    "whitenoise.middleware.WhiteNoiseMiddleware",
+    1, "whitenoise.middleware.WhiteNoiseMiddleware"
 )
 STATICFILES_STORAGE = (
-    "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    "whitenoise.storage"
+    ".CompressedManifestStaticFilesStorage"
 )
 
-# ── Logging ───────────────────────────────────────────────
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

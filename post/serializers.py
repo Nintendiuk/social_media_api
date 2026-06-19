@@ -1,8 +1,14 @@
 import re
+
 from django.utils import timezone
 from rest_framework import serializers
 
-from post.models import Comment, Hashtag, Like, Post, ScheduledPost
+from post.models import (
+    Comment,
+    Hashtag,
+    Post,
+    ScheduledPost,
+)
 from user.serializers import UserProfileSerializer
 
 
@@ -37,9 +43,7 @@ class CommentSerializer(serializers.ModelSerializer):
         validated_data["author"] = (
             self.context["request"].user
         )
-        validated_data["post"] = (
-            self.context["post"]
-        )
+        validated_data["post"] = self.context["post"]
         return super().create(validated_data)
 
 
@@ -103,6 +107,7 @@ class PostSerializer(serializers.ModelSerializer):
         post = super().update(instance, validated_data)
         self._sync_hashtags(post, post.content)
         return post
+
 
 class ScheduledPostSerializer(serializers.ModelSerializer):
     class Meta:

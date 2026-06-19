@@ -1,62 +1,33 @@
-from django.urls import path
-
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 
 from user.views import (
-    FollowersListView,
-    FollowingListView,
-    FollowView,
     LoginView,
     LogoutView,
     RegisterView,
-    UnfollowView,
-    UserListView,
-    UserProfileDetailView,
-    UserProfileMeView,
+    UserViewSet,
 )
 
 app_name = "user"
 
+router = DefaultRouter()
+router.register(r"", UserViewSet, basename="user")
+
 urlpatterns = [
-    # Auth
-    path("register/", RegisterView.as_view(), name="register"),
-    path("login/", LoginView.as_view(), name="login"),
-    path("logout/", LogoutView.as_view(), name="logout"),
-    # Profiles
     path(
-        "profile/me/",
-        UserProfileMeView.as_view(),
-        name="profile-me",
+        "register/",
+        RegisterView.as_view(),
+        name="register",
     ),
     path(
-        "profile/<int:pk>/",
-        UserProfileDetailView.as_view(),
-        name="profile-detail",
+        "login/",
+        LoginView.as_view(),
+        name="login",
     ),
     path(
-        "profile/",
-        UserListView.as_view(),
-        name="profile-list",
+        "logout/",
+        LogoutView.as_view(),
+        name="logout",
     ),
-    # Relationships
-    path(
-        "<int:pk>/follow/",
-        FollowView.as_view(),
-        name="follow",
-    ),
-    path(
-        "<int:pk>/unfollow/",
-        UnfollowView.as_view(),
-        name="unfollow",
-    ),
-    path(
-        "<int:pk>/followers/",
-        FollowersListView.as_view(),
-        name="followers",
-    ),
-    path(
-        "<int:pk>/following/",
-        FollowingListView.as_view(),
-        name="following",
-    ),
+    path("", include(router.urls)),
 ]

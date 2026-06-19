@@ -64,10 +64,7 @@ TEMPLATES = [
                 "django.template.context_processors.debug",
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
-                (
-                    "django.contrib.messages"
-                    ".context_processors.messages"
-                ),
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
@@ -165,19 +162,7 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "Social Media API",
     "DESCRIPTION": (
         "A production-ready RESTful Social Media API "
-        "built with Django REST Framework.\n\n"
-        "## Features\n"
-        "- JWT Authentication (register, login, logout)\n"
-        "- User profiles with follow/unfollow\n"
-        "- Posts with hashtag extraction\n"
-        "- Personalised feed\n"
-        "- Likes and comments\n"
-        "- Scheduled post publishing via Celery\n\n"
-        "## Authentication\n"
-        "All protected endpoints require a Bearer token. "
-        "Obtain one via `POST /api/user/login/` "
-        "then set the `Authorization` header:\n"
-        "`Authorization: Bearer <access_token>`"
+        "built with Django REST Framework."
     ),
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
@@ -187,9 +172,7 @@ SPECTACULAR_SETTINGS = {
     "TAGS": [
         {
             "name": "Auth",
-            "description": (
-                "Registration, login, and logout."
-            ),
+            "description": "Registration, login, logout.",
         },
         {
             "name": "Profiles",
@@ -201,15 +184,15 @@ SPECTACULAR_SETTINGS = {
         {
             "name": "Relationships",
             "description": (
-                "Follow/unfollow users, "
-                "list followers and following."
+                "Follow/unfollow, list followers "
+                "and following."
             ),
         },
         {
             "name": "Posts",
             "description": (
                 "Create, retrieve, update, delete posts. "
-                "Filter by hashtag. View personalised feed."
+                "Filter by hashtag. View feed."
             ),
         },
         {

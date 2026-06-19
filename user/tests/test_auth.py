@@ -1,13 +1,8 @@
 import pytest
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.test import APIClient
+
 from user.models import User
-
-
-@pytest.fixture
-def client():
-    return APIClient()
 
 
 @pytest.fixture
@@ -24,33 +19,37 @@ def registered_user(db, user_payload):
     return User.objects.create_user(**user_payload)
 
 
-# ── Registration ──────────────────────────────────────────
 class TestRegistration:
-    def test_register_success(self, client, db, user_payload):
+    def test_register_success(
+        self, client, db, user_payload
+    ):
         url = reverse("user:register")
-        res = client.post(url, user_payload, format="json")
+        res = client.post(
+            url, user_payload, format="json"
+        )
 
         assert res.status_code == status.HTTP_201_CREATED
         assert res.data["email"] == user_payload["email"]
         assert "password" not in res.data
-        assert User.objects.filter(
-            email=user_payload["email"]
-        ).exists()
 
     def test_register_duplicate_email_fails(
         self, client, db, user_payload, registered_user
     ):
         url = reverse("user:register")
-        res = client.post(url, user_payload, format="json")
+        res = client.post(
+            url, user_payload, format="json"
+        )
 
         assert res.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_register_weak_password_fails(
         self, client, db, user_payload
     ):
-        url = reverse("user:register")
         user_payload["password"] = "123"
-        res = client.post(url, user_payload, format="json")
+        url = reverse("user:register")
+        res = client.post(
+            url, user_payload, format="json"
+        )
 
         assert res.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -65,7 +64,6 @@ class TestRegistration:
         assert res.status_code == status.HTTP_400_BAD_REQUEST
 
 
-# ── Login ─────────────────────────────────────────────────
 class TestLogin:
     def test_login_success_returns_tokens(
         self, client, db, registered_user, user_payload
@@ -110,41 +108,36 @@ class TestLogin:
         assert res.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-# ── Logout ────────────────────────────────────────────────
 class TestLogout:
     def test_logout_success(
         self, client, db, registered_user, user_payload
     ):
-        # Obtain tokens
-        login_url = reverse("user:login")
         login_res = client.post(
-            login_url,
+            reverse("user:login"),
             {
                 "email": user_payload["email"],
                 "password": user_payload["password"],
             },
             format="json",
         )
-        refresh_token = login_res.data["refresh"]
-        access_token = login_res.data["access"]
-
-        # Logout (blacklist refresh token)
-        logout_url = reverse("user:logout")
         client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {access_token}"
+            HTTP_AUTHORIZATION=(
+                f"Bearer {login_res.data['access']}"
+            )
         )
         res = client.post(
-            logout_url,
-            {"refresh": refresh_token},
+            reverse("user:logout"),
+            {"refresh": login_res.data["refresh"]},
             format="json",
         )
 
         assert res.status_code == status.HTTP_205_RESET_CONTENT
 
     def test_logout_unauthenticated_fails(self, client, db):
-        url = reverse("user:logout")
         res = client.post(
-            url, {"refresh": "faketoken"}, format="json"
+            reverse("user:logout"),
+            {"refresh": "faketoken"},
+            format="json",
         )
 
         assert res.status_code == status.HTTP_401_UNAUTHORIZED

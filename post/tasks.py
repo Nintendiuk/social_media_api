@@ -6,14 +6,6 @@ from post.models import Post, ScheduledPost
 
 @shared_task
 def publish_scheduled_posts():
-    """
-    Finds all pending ScheduledPosts whose
-    scheduled_at time has passed and publishes
-    them as real Posts.
-
-    Safe to call multiple times — only PENDING
-    records are processed.
-    """
     due = ScheduledPost.objects.filter(
         status=ScheduledPost.Status.PENDING,
         scheduled_at__lte=timezone.now(),

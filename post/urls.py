@@ -1,69 +1,41 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 
 from post.views import (
-    CommentDetailView,
-    CommentListCreateView,
-    FeedView,
-    MyPostsView,
-    PostDetailView,
-    PostLikeView,
-    PostListCreateView,
-    PostUnlikeView,
-    ScheduledPostDetailView,
-    ScheduledPostListCreateView,
+    CommentViewSet,
+    PostViewSet,
+    ScheduledPostViewSet,
 )
 
 app_name = "post"
 
+router = DefaultRouter()
+router.register(
+    r"scheduled",
+    ScheduledPostViewSet,
+    basename="scheduled",
+)
+router.register(r"", PostViewSet, basename="post")
+
 urlpatterns = [
     path(
-        "",
-        PostListCreateView.as_view(),
-        name="post-list-create",
-    ),
-    path(
-        "<int:pk>/",
-        PostDetailView.as_view(),
-        name="post-detail",
-    ),
-    path(
-        "my-posts/",
-        MyPostsView.as_view(),
-        name="my-posts",
-    ),
-    path(
-        "feed/",
-        FeedView.as_view(),
-        name="feed",
-    ),
-    path(
-        "<int:pk>/like/",
-        PostLikeView.as_view(),
-        name="post-like",
-    ),
-    path(
-        "<int:pk>/unlike/",
-        PostUnlikeView.as_view(),
-        name="post-unlike",
-    ),
-    path(
         "<int:post_pk>/comments/",
-        CommentListCreateView.as_view(),
+        CommentViewSet.as_view(
+            {"get": "list", "post": "create"}
+        ),
         name="comment-list-create",
     ),
     path(
         "<int:post_pk>/comments/<int:pk>/",
-        CommentDetailView.as_view(),
+        CommentViewSet.as_view(
+            {
+                "get": "retrieve",
+                "patch": "partial_update",
+                "put": "update",
+                "delete": "destroy",
+            }
+        ),
         name="comment-detail",
     ),
-path(
-        "scheduled/",
-        ScheduledPostListCreateView.as_view(),
-        name="scheduled-list-create",
-    ),
-    path(
-        "scheduled/<int:pk>/",
-        ScheduledPostDetailView.as_view(),
-        name="scheduled-detail",
-    ),
+    path("", include(router.urls)),
 ]
