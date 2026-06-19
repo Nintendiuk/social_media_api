@@ -3,8 +3,10 @@
 A production-ready RESTful Social Media API built with
 **Django**, **Django REST Framework**, **JWT auth**,
 **Celery**, and **drf-spectacular**.
-Developed following strict **Test-Driven Development**
-(88 tests, pytest).
+Strict **Test-Driven Development** — 92 tests, pytest.
+All CRUD resources use `ModelViewSet` + `DefaultRouter`.
+`APIView` reserved for auth and toggle actions only.
+Zero N+1 queries via `select_related`/`prefetch_related`.
 
 ---
 
@@ -13,7 +15,7 @@ Developed following strict **Test-Driven Development**
 | Layer | Technology |
 |---|---|
 | Framework | Django 5 + DRF 3.15 |
-| Auth | JWT (SimpleJWT) |
+| Auth | JWT (SimpleJWT + token blacklist) |
 | Task queue | Celery 5 + Redis 7 |
 | Database | PostgreSQL 16 (SQLite for dev) |
 | Docs | drf-spectacular (Swagger UI) |
@@ -24,28 +26,82 @@ Developed following strict **Test-Driven Development**
 
 ## Features
 
-- **Auth** — register, login, logout (token blacklist)
+- **Auth** — register, login, logout (JWT blacklist)
 - **Profiles** — retrieve, update, search users
-- **Relationships** — follow / unfollow, list followers & following
-- **Posts** — create (text + optional media), feed, own posts, hashtag filter
-- **Engagement** — likes / unlikes, threaded comments
-- **Scheduled posts** — Celery publishes posts at a future time
+- **Relationships** — follow/unfollow, followers/following
+- **Posts** — create, feed, own posts, hashtag filter
+- **Engagement** — likes/unlikes, comments
+- **Scheduled posts** — Celery publishes at future time
 - **Docs** — Swagger UI at `/api/docs/`
-- **N+1 free** — `select_related` + `prefetch_related` throughout
+- **N+1 free** — centralised optimised querysets
 
 ---
 
-## Local Development Setup
+## Project Structure
 
-### Prerequisites
+```
+social_media_api/
+├── conftest.py                 # shared pytest fixtures
+├── pytest.ini
+├── .flake8
+├── .env.example
+├── Dockerfile
+├── docker-compose.yml
+├── requirements/
+│   ├── base.txt
+│   ├── local.txt
+│   └── production.txt
+│
+├── social_media_api/
+│   ├── settings/
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── local.py
+│   │   └── production.py
+│   ├── celery.py
+│   ├── __init__.py
+│   ├── urls.py
+│   └── wsgi.py
+│
+├── user/
+│   ├── models.py
+│   ├── serializers.py
+│   ├── views.py               # RegisterView, LoginView,
+│   │                          # LogoutView, UserViewSet
+│   ├── permissions.py         # IsOwnerOrReadOnly
+│   ├── admin.py
+│   ├── urls.py
+│   └── tests/
+│       ├── test_auth.py
+│       ├── test_profile.py
+│       └── test_relationships.py
+│
+└── post/
+    ├── models.py
+    ├── serializers.py
+    ├── views.py               # PostViewSet,
+    │                          # CommentViewSet,
+    │                          # ScheduledPostViewSet
+    ├── mixins.py              # AuthorPermissionMixin
+    ├── permissions.py         # IsAuthorOrReadOnly
+    ├── tasks.py               # publish_scheduled_posts
+    ├── admin.py
+    ├── urls.py
+    └── tests/
+        ├── test_posts.py
+        ├── test_likes_comments.py
+        ├── test_scheduled.py
+        └── test_schema.py
+```
 
-- Python 3.12+
-- Redis (or Docker)
+---
 
-### 1. Clone & create virtual environment
+## Local Development
+
+### 1. Clone & virtual environment
 
 ```bash
-git clone https://github.com/your-username/social-media-api.git
+git clone https://github.com/your-username/social-media-api
 cd social-media-api
 
 # Windows PowerShell
@@ -67,34 +123,23 @@ pip install -r requirements/local.txt
 
 ```bash
 cp .env.example .env
-# Edit .env — set SECRET_KEY at minimum
+# Set SECRET_KEY at minimum
 ```
 
-### 4. Run migrations
+### 4. Migrate & run
 
 ```bash
 python manage.py migrate
-```
-
-### 5. Create superuser (optional)
-
-```bash
-python manage.py createsuperuser
-```
-
-### 6. Start development server
-
-```bash
 python manage.py runserver
 ```
 
-### 7. Start Celery (separate terminals)
+### 5. Celery (two separate terminals)
 
 ```bash
-# Terminal 1 — worker
+# Terminal 1
 celery -A social_media_api worker --loglevel=info
 
-# Terminal 2 — beat scheduler
+# Terminal 2
 celery -A social_media_api beat --loglevel=info
 ```
 
@@ -103,171 +148,141 @@ celery -A social_media_api beat --loglevel=info
 ## Running Tests
 
 ```bash
-pytest                  # full suite
-pytest user/tests/ -v   # auth + profile + relationship tests
-pytest post/tests/ -v   # post + engagement + scheduled tests
-pytest --tb=short       # compact output
+pytest                        # full suite
+pytest user/tests/ -v         # user app only
+pytest post/tests/ -v         # post app only
+pytest --tb=short             # compact output
 ```
 
 ---
 
-## Docker (Production)
+## Docker
 
 ```bash
 cp .env.example .env
-# Set production values in .env
-
 docker compose up --build -d
 ```
 
-Services started:
-
 | Service | Role |
 |---|---|
-| `web` | Gunicorn (4 workers) |
+| `web` | Gunicorn :8000 |
 | `worker` | Celery worker |
-| `beat` | Celery beat scheduler |
+| `beat` | Celery beat |
 | `db` | PostgreSQL 16 |
-| `redis` | Broker + result backend |
+| `redis` | Broker + backend |
 
 ---
 
 ## API Reference
 
-Interactive docs available at:
-
 ```
-http://127.0.0.1:8000/api/docs/     ← Swagger UI
-http://127.0.0.1:8000/api/schema/   ← OpenAPI JSON
+http://127.0.0.1:8000/api/docs/    ← Swagger UI
+http://127.0.0.1:8000/api/schema/  ← OpenAPI JSON
 ```
 
 ### Auth
-
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/user/register/` | Register new user |
-| POST | `/api/user/login/` | Obtain JWT tokens |
-| POST | `/api/user/logout/` | Blacklist refresh token |
+| POST | `/api/user/register/` | Register |
+| POST | `/api/user/login/` | Login → tokens |
+| POST | `/api/user/logout/` | Logout |
 
 ### Profiles
-
 | Method | Endpoint | Description |
 |---|---|---|
-| GET / PATCH | `/api/user/profile/me/` | Own profile |
-| GET / PATCH | `/api/user/profile/<id>/` | Any user profile |
-| GET | `/api/user/profile/?search=` | Search users |
+| GET | `/api/user/` | List/search users |
+| GET | `/api/user/<id>/` | Retrieve profile |
+| PATCH | `/api/user/<id>/` | Update (owner) |
+| GET/PATCH | `/api/user/me/` | Own profile |
 
 ### Relationships
-
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/user/<id>/follow/` | Follow user |
-| POST | `/api/user/<id>/unfollow/` | Unfollow user |
-| GET | `/api/user/<id>/followers/` | List followers |
-| GET | `/api/user/<id>/following/` | List following |
+| POST | `/api/user/<id>/follow/` | Follow |
+| POST | `/api/user/<id>/unfollow/` | Unfollow |
+| GET | `/api/user/<id>/followers/` | Followers list |
+| GET | `/api/user/<id>/following/` | Following list |
 
 ### Posts
-
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/api/post/` | All posts (filter: `?hashtag=`) |
+| GET | `/api/post/` | All posts (`?hashtag=`) |
 | POST | `/api/post/` | Create post |
-| GET / PATCH / DELETE | `/api/post/<id>/` | Post detail |
+| GET/PATCH/DELETE | `/api/post/<id>/` | Post detail |
 | GET | `/api/post/my-posts/` | Own posts |
-| GET | `/api/post/feed/` | Personalised feed |
+| GET | `/api/post/feed/` | Feed |
 
 ### Engagement
-
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/post/<id>/like/` | Like post |
-| POST | `/api/post/<id>/unlike/` | Unlike post |
-| GET / POST | `/api/post/<id>/comments/` | List / add comments |
-| GET / PATCH / DELETE | `/api/post/<id>/comments/<id>/` | Comment detail |
+| POST | `/api/post/<id>/like/` | Like |
+| POST | `/api/post/<id>/unlike/` | Unlike |
+| GET/POST | `/api/post/<id>/comments/` | Comments |
+| GET/PATCH/DELETE | `/api/post/<id>/comments/<id>/` | Comment detail |
 
 ### Scheduled Posts
-
 | Method | Endpoint | Description |
 |---|---|---|
-| GET / POST | `/api/post/scheduled/` | List / create |
-| GET / PATCH / DELETE | `/api/post/scheduled/<id>/` | Detail |
+| GET/POST | `/api/post/scheduled/` | List/create |
+| GET/PATCH/DELETE | `/api/post/scheduled/<id>/` | Detail |
 
 ---
 
-## Project Structure
+## Architecture Notes
 
-```
-social_media_api/
-├── social_media_api/
-│   ├── settings/
-│   │   ├── base.py         # shared settings
-│   │   ├── local.py        # dev overrides
-│   │   └── production.py   # prod overrides + security
-│   ├── celery.py
-│   ├── urls.py
-│   └── wsgi.py
-├── user/
-│   ├── models.py           # Custom User model
-│   ├── serializers.py
-│   ├── views.py            # Auth + Profile + Relationships
-│   ├── permissions.py      # IsOwnerOrReadOnly
-│   ├── urls.py
-│   └── tests/
-│       ├── test_auth.py
-│       ├── test_profile.py
-│       └── test_relationships.py
-├── post/
-│   ├── models.py           # Post, Hashtag, Like,
-│   │                       # Comment, ScheduledPost
-│   ├── serializers.py
-│   ├── views.py
-│   ├── permissions.py      # IsAuthorOrReadOnly
-│   ├── tasks.py            # Celery: publish_scheduled_posts
-│   ├── urls.py
-│   └── tests/
-│       ├── test_posts.py
-│       ├── test_likes_comments.py
-│       └── test_schema.py
-├── requirements/
-│   ├── base.txt
-│   ├── local.txt
-│   └── production.txt
-├── Dockerfile
-├── docker-compose.yml
-├── .env.example
-├── .flake8
-├── pytest.ini
-└── README.md
-```
-
----
-
-## N+1 Query Prevention
-
-Every queryset that serializes related data uses
-`select_related` or `prefetch_related`:
-
-| View | Optimisation |
+### View layer rule
+| Pattern | When used |
 |---|---|
-| Post list / feed | `select_related("author")` + `prefetch_related("hashtags", "likes", "comments", "author__followers", "author__following")` |
-| Comment list | `select_related("author")` + `prefetch_related("author__followers", "author__following")` |
-| Followers / following lists | `prefetch_related("followers", "following")` |
+| `ModelViewSet` | All CRUD resources |
+| `APIView` | Auth only (register, login, logout) |
+| `@action` | Toggles and sub-resources |
 
-Without prefetching, a feed of 50 posts with nested
-author + hashtags + counts would fire ~250 queries.
-With prefetching it stays at ~5 regardless of page size.
+### Duplication eliminated
+| Problem | Solution |
+|---|---|
+| `get_permissions` in 3 viewsets | `AuthorPermissionMixin` |
+| `http_method_names` in 3 viewsets | `AuthorPermissionMixin` |
+| `like`/`unlike` mirror logic | `_like_response(action)` |
+| `follow`/`unfollow` mirror logic | `_follow_response(action)` |
+| `followers`/`following` mirror logic | `_follow_list_response(relation)` |
+| Fixtures in 7 test files | `conftest.py` |
+
+### N+1 prevention
+| ViewSet | Fix |
+|---|---|
+| `PostViewSet` | `select_related("author")` + `prefetch_related("author__followers", "author__following", "hashtags", "likes", "comments")` |
+| `CommentViewSet` | `select_related("author")` + `prefetch_related("author__followers", "author__following")` |
+| `UserViewSet` | `prefetch_related("followers", "following")` |
+| Celery task | `select_related("author")` |
+
+---
+
+## Test Coverage
+
+| File | Tests |
+|---|---|
+| `test_auth.py` | 8 |
+| `test_profile.py` | 8 |
+| `test_relationships.py` | 16 |
+| `test_posts.py` | 20 |
+| `test_likes_comments.py` | 17 |
+| `test_scheduled.py` | 10 |
+| `test_schema.py` | 13 |
+| **Total** | **92** |
 
 ---
 
 ## Commit History
 
 ```
-chore: initial project setup with Django, DRF, JWT, and pytest
-feat: implement custom User model with JWT registration, login, and logout
-feat: add profile retrieve, update, and user search endpoints
-feat: implement follow/unfollow and followers/following list endpoints
-feat: implement post create, feed, own posts, and hashtag filtering
-feat: add likes, comments, and celery scheduled post publishing
-docs: annotate all endpoints with drf-spectacular OpenAPI schema
-chore: production hardening, settings split, Docker, and README
+chore: initial project setup
+feat: custom User model, JWT auth
+feat: profile endpoints
+feat: follow/unfollow, followers/following
+feat: posts, feed, hashtag filter
+feat: likes, comments, celery scheduled posts
+docs: drf-spectacular OpenAPI schema
+chore: production hardening, Docker, README
+refactor: ModelViewSet + DefaultRouter
+refactor: eliminate duplicate code, add conftest
 ```
