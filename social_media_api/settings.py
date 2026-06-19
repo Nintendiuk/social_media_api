@@ -137,9 +137,67 @@ REST_FRAMEWORK = {
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "Social Media API",
-    "DESCRIPTION": "A RESTful social media backend.",
+    "DESCRIPTION": (
+        "A production-ready RESTful Social Media API "
+        "built with Django REST Framework.\n\n"
+        "## Features\n"
+        "- JWT Authentication (register, login, logout)\n"
+        "- User profiles with follow/unfollow\n"
+        "- Posts with hashtag extraction\n"
+        "- Personalised feed\n"
+        "- Likes and comments\n"
+        "- Scheduled post publishing via Celery\n\n"
+        "## Authentication\n"
+        "All protected endpoints require a Bearer token. "
+        "Obtain one via `POST /api/user/login/` "
+        "then set the `Authorization` header:\n"
+        "`Authorization: Bearer <access_token>`"
+    ),
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    "SCHEMA_PATH_PREFIX": "/api/",
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SORT_OPERATIONS": False,
+    "TAGS": [
+        {
+            "name": "Auth",
+            "description": (
+                "Registration, login, and logout endpoints."
+            ),
+        },
+        {
+            "name": "Profiles",
+            "description": (
+                "Retrieve and update user profiles, "
+                "search users."
+            ),
+        },
+        {
+            "name": "Relationships",
+            "description": (
+                "Follow and unfollow users, "
+                "list followers and following."
+            ),
+        },
+        {
+            "name": "Posts",
+            "description": (
+                "Create, retrieve, update, delete posts. "
+                "Filter by hashtag. View personalised feed."
+            ),
+        },
+        {
+            "name": "Engagement",
+            "description": "Like, unlike, and comment on posts.",
+        },
+        {
+            "name": "Scheduled Posts",
+            "description": (
+                "Schedule posts for future publishing "
+                "via Celery."
+            ),
+        },
+    ],
 }
 
 SIMPLE_JWT = {

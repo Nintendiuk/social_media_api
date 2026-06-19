@@ -1,19 +1,27 @@
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import (
+    extend_schema,
+    extend_schema_view,
+    OpenApiParameter,
+)
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from post.models import Comment, Hashtag, Like, Post, ScheduledPost
+from post.models import (
+    Comment,
+    Hashtag,
+    Like,
+    Post,
+    ScheduledPost,
+)
+from post.permissions import IsAuthorOrReadOnly
 from post.serializers import (
     CommentSerializer,
     PostSerializer,
     ScheduledPostSerializer,
 )
-
-from post.models import Comment, Hashtag, Like, Post
-from post.permissions import IsAuthorOrReadOnly
-from post.serializers import CommentSerializer, PostSerializer
 
 
 def _post_qs():
@@ -25,8 +33,7 @@ def _post_qs():
     - prefetch_related("author__followers",
                        "author__following"): batch-load
       follower counts used by UserProfileSerializer.
-    - prefetch_related("hashtags"): single IN query for
-      all hashtag rows.
+    - prefetch_related("hashtags"): single IN query.
     - prefetch_related("likes", "comments"): single IN
       query each for like/comment counts.
     """
@@ -64,12 +71,38 @@ def _comment_qs():
 
 
 # ── Post views ────────────────────────────────────────────
+@extend_schema_view(
+    get=extend_schema(
+        summary="List all posts",
+        description=(
+            "Returns all posts ordered by newest first. "
+            "Optionally filter by hashtag using "
+            "`?hashtag=<name>`."
+        ),
+        tags=["Posts"],
+        parameters=[
+            OpenApiParameter(
+                name="hashtag",
+                description=(
+                    "Filter posts by hashtag name "
+                    "(without the # symbol)."
+                ),
+                required=False,
+                type=str,
+            )
+        ],
+    ),
+    post=extend_schema(
+        summary="Create a new post",
+        description=(
+            "Creates a post for the authenticated user. "
+            "Hashtags are extracted automatically from "
+            "content using #word syntax."
+        ),
+        tags=["Posts"],
+    ),
+)
 class PostListCreateView(generics.ListCreateAPIView):
-    """
-    GET  /api/post/        → list all posts
-                             (filter: ?hashtag=<name>)
-    POST /api/post/        → create a new post
-    """
     serializer_class = PostSerializer
     permission_classes = (IsAuthenticated,)
 
@@ -77,16 +110,31 @@ class PostListCreateView(generics.ListCreateAPIView):
         qs = _post_qs()
         hashtag = self.request.query_params.get("hashtag")
         if hashtag:
-            qs = qs.filter(hashtags__name=hashtag.lower())
+            qs = qs.filter(
+                hashtags__name=hashtag.lower()
+            )
         return qs
 
 
+@extend_schema_view(
+    get=extend_schema(
+        summary="Retrieve a post",
+        tags=["Posts"],
+    ),
+    patch=extend_schema(
+        summary="Partially update a post (author only)",
+        tags=["Posts"],
+    ),
+    put=extend_schema(
+        summary="Update a post (author only)",
+        tags=["Posts"],
+    ),
+    delete=extend_schema(
+        summary="Delete a post (author only)",
+        tags=["Posts"],
+    ),
+)
 class PostDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """
-    GET    /api/post/<pk>/  → retrieve post
-    PATCH  /api/post/<pk>/  → update  (author only)
-    DELETE /api/post/<pk>/  → delete  (author only)
-    """
     serializer_class = PostSerializer
     permission_classes = (IsAuthenticated, IsAuthorOrReadOnly)
 
@@ -94,8 +142,13 @@ class PostDetailView(generics.RetrieveUpdateDestroyAPIView):
         return _post_qs()
 
 
+@extend_schema_view(
+    get=extend_schema(
+        summary="List authenticated user's own posts",
+        tags=["Posts"],
+    )
+)
 class MyPostsView(generics.ListAPIView):
-    """GET /api/post/my-posts/  → own posts only"""
     serializer_class = PostSerializer
     permission_classes = (IsAuthenticated,)
 
@@ -103,12 +156,18 @@ class MyPostsView(generics.ListAPIView):
         return _post_qs().filter(author=self.request.user)
 
 
+@extend_schema_view(
+    get=extend_schema(
+        summary="Retrieve personalised post feed",
+        description=(
+            "Returns posts from the authenticated user "
+            "and everyone they follow, "
+            "ordered newest first."
+        ),
+        tags=["Posts"],
+    )
+)
 class FeedView(generics.ListAPIView):
-    """
-    GET /api/post/feed/
-    Posts from the authenticated user + everyone they follow,
-    newest first.
-    """
     serializer_class = PostSerializer
     permission_classes = (IsAuthenticated,)
 
@@ -123,10 +182,25 @@ class FeedView(generics.ListAPIView):
 
 
 # ── Like views ────────────────────────────────────────────
+@extend_schema(tags=["Engagement"])
 class PostLikeView(APIView):
-    """POST /api/post/<pk>/like/"""
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        summary="Like a post",
+        description=(
+            "Authenticated user likes the target post. "
+            "Returns 400 if already liked."
+        ),
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "detail": {"type": "string"}
+                },
+            }
+        },
+    )
     def post(self, request, pk):
         post = get_object_or_404(Post, pk=pk)
 
@@ -145,10 +219,26 @@ class PostLikeView(APIView):
         )
 
 
+@extend_schema(tags=["Engagement"])
 class PostUnlikeView(APIView):
-    """POST /api/post/<pk>/unlike/"""
     permission_classes = (IsAuthenticated,)
 
+    @extend_schema(
+        summary="Unlike a post",
+        description=(
+            "Authenticated user removes their like "
+            "from the target post. "
+            "Returns 400 if not yet liked."
+        ),
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "detail": {"type": "string"}
+                },
+            }
+        },
+    )
     def post(self, request, pk):
         post = get_object_or_404(Post, pk=pk)
         like = Like.objects.filter(
@@ -157,7 +247,11 @@ class PostUnlikeView(APIView):
 
         if not like:
             return Response(
-                {"detail": "You have not liked this post."},
+                {
+                    "detail": (
+                        "You have not liked this post."
+                    )
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -169,11 +263,17 @@ class PostUnlikeView(APIView):
 
 
 # ── Comment views ─────────────────────────────────────────
+@extend_schema_view(
+    get=extend_schema(
+        summary="List comments on a post",
+        tags=["Engagement"],
+    ),
+    post=extend_schema(
+        summary="Add a comment to a post",
+        tags=["Engagement"],
+    ),
+)
 class CommentListCreateView(generics.ListCreateAPIView):
-    """
-    GET  /api/post/<post_pk>/comments/  → list comments
-    POST /api/post/<post_pk>/comments/  → add comment
-    """
     serializer_class = CommentSerializer
     permission_classes = (IsAuthenticated,)
 
@@ -192,14 +292,23 @@ class CommentListCreateView(generics.ListCreateAPIView):
         return context
 
 
+@extend_schema_view(
+    get=extend_schema(
+        summary="Retrieve a comment",
+        tags=["Engagement"],
+    ),
+    patch=extend_schema(
+        summary="Update a comment (author only)",
+        tags=["Engagement"],
+    ),
+    delete=extend_schema(
+        summary="Delete a comment (author only)",
+        tags=["Engagement"],
+    ),
+)
 class CommentDetailView(
     generics.RetrieveUpdateDestroyAPIView
 ):
-    """
-    GET    /api/post/<post_pk>/comments/<pk>/
-    PATCH  /api/post/<post_pk>/comments/<pk>/
-    DELETE /api/post/<post_pk>/comments/<pk>/
-    """
     serializer_class = CommentSerializer
     permission_classes = (IsAuthenticated, IsAuthorOrReadOnly)
 
@@ -207,13 +316,30 @@ class CommentDetailView(
         get_object_or_404(Post, pk=self.kwargs["post_pk"])
         return _comment_qs()
 
+
+# ── Scheduled post views ──────────────────────────────────
+@extend_schema_view(
+    get=extend_schema(
+        summary="List own scheduled posts",
+        description=(
+            "Returns only the authenticated user's "
+            "own scheduled posts."
+        ),
+        tags=["Scheduled Posts"],
+    ),
+    post=extend_schema(
+        summary="Schedule a post for future publishing",
+        description=(
+            "Creates a scheduled post that Celery will "
+            "publish automatically at `scheduled_at`. "
+            "Time must be in the future."
+        ),
+        tags=["Scheduled Posts"],
+    ),
+)
 class ScheduledPostListCreateView(
     generics.ListCreateAPIView
 ):
-    """
-    GET  /api/post/scheduled/  → own scheduled posts
-    POST /api/post/scheduled/  → create scheduled post
-    """
     serializer_class = ScheduledPostSerializer
     permission_classes = (IsAuthenticated,)
 
@@ -223,14 +349,23 @@ class ScheduledPostListCreateView(
         )
 
 
+@extend_schema_view(
+    get=extend_schema(
+        summary="Retrieve a scheduled post",
+        tags=["Scheduled Posts"],
+    ),
+    patch=extend_schema(
+        summary="Update a scheduled post (author only)",
+        tags=["Scheduled Posts"],
+    ),
+    delete=extend_schema(
+        summary="Delete a scheduled post (author only)",
+        tags=["Scheduled Posts"],
+    ),
+)
 class ScheduledPostDetailView(
     generics.RetrieveUpdateDestroyAPIView
 ):
-    """
-    GET    /api/post/scheduled/<pk>/
-    PATCH  /api/post/scheduled/<pk>/
-    DELETE /api/post/scheduled/<pk>/
-    """
     serializer_class = ScheduledPostSerializer
     permission_classes = (IsAuthenticated, IsAuthorOrReadOnly)
 
