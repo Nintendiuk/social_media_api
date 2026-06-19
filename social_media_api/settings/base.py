@@ -10,14 +10,14 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
-from datetime import timedelta
 from pathlib import Path
+from datetime import timedelta
 from decouple import config
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = config("SECRET_KEY")
-DEBUG = config("DEBUG", default=False, cast=bool)
+DEBUG = False
 ALLOWED_HOSTS = config(
     "ALLOWED_HOSTS",
     default="127.0.0.1",
@@ -31,13 +31,11 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # Third-party
     "rest_framework",
     "rest_framework_simplejwt",
-    "drf_spectacular",
     "rest_framework_simplejwt.token_blacklist",
+    "drf_spectacular",
     "django_celery_beat",
-    # Local
     "user",
     "post",
 ]
@@ -66,21 +64,16 @@ TEMPLATES = [
                 "django.template.context_processors.debug",
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
-                "django.contrib.messages.context_processors"
-                ".messages",
+                (
+                    "django.contrib.messages"
+                    ".context_processors.messages"
+                ),
             ],
         },
     },
 ]
 
 WSGI_APPLICATION = "social_media_api.wsgi.application"
-
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
-}
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -115,11 +108,11 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
 AUTH_USER_MODEL = "user.User"
 
 REST_FRAMEWORK = {
@@ -133,7 +126,40 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": (
         "drf_spectacular.openapi.AutoSchema"
     ),
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "100/day",
+        "user": "1000/day",
+    },
+    "DEFAULT_PAGINATION_CLASS": (
+        "rest_framework.pagination.PageNumberPagination"
+    ),
+    "PAGE_SIZE": 20,
 }
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+}
+
+CELERY_BROKER_URL = config(
+    "CELERY_BROKER_URL",
+    default="redis://localhost:6379/0",
+)
+CELERY_RESULT_BACKEND = config(
+    "CELERY_RESULT_BACKEND",
+    default="redis://localhost:6379/0",
+)
+CELERY_TIMEZONE = "UTC"
+CELERY_BEAT_SCHEDULER = (
+    "django_celery_beat.schedulers:DatabaseScheduler"
+)
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "Social Media API",
@@ -162,7 +188,7 @@ SPECTACULAR_SETTINGS = {
         {
             "name": "Auth",
             "description": (
-                "Registration, login, and logout endpoints."
+                "Registration, login, and logout."
             ),
         },
         {
@@ -175,7 +201,7 @@ SPECTACULAR_SETTINGS = {
         {
             "name": "Relationships",
             "description": (
-                "Follow and unfollow users, "
+                "Follow/unfollow users, "
                 "list followers and following."
             ),
         },
@@ -188,7 +214,9 @@ SPECTACULAR_SETTINGS = {
         },
         {
             "name": "Engagement",
-            "description": "Like, unlike, and comment on posts.",
+            "description": (
+                "Like, unlike, and comment on posts."
+            ),
         },
         {
             "name": "Scheduled Posts",
@@ -199,23 +227,3 @@ SPECTACULAR_SETTINGS = {
         },
     ],
 }
-
-SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-    "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": True,
-    "AUTH_HEADER_TYPES": ("Bearer",),
-}
-
-CELERY_BROKER_URL = config(
-    "CELERY_BROKER_URL", default="redis://localhost:6379/0"
-)
-CELERY_RESULT_BACKEND = config(
-    "CELERY_RESULT_BACKEND",
-    default="redis://localhost:6379/0",
-)
-CELERY_TIMEZONE = "UTC"
-CELERY_BEAT_SCHEDULER = (
-    "django_celery_beat.schedulers:DatabaseScheduler"
-)

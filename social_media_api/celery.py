@@ -3,7 +3,7 @@ from celery import Celery
 
 os.environ.setdefault(
     "DJANGO_SETTINGS_MODULE",
-    "social_media_api.settings",
+    "social_media_api.settings.local",
 )
 
 app = Celery("social_media_api")
