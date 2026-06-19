@@ -5,11 +5,7 @@ from rest_framework.permissions import (
 
 
 class IsAuthorOrReadOnly(BasePermission):
-    """
-    Write access restricted to the post author.
-    Safe methods (GET, HEAD, OPTIONS) are open
-    to any authenticated user.
-    """
+    """Write access restricted to the post/comment author."""
 
     def has_object_permission(self, request, view, obj):
         if request.method in SAFE_METHODS:
